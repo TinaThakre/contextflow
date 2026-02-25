@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Sparkles,
@@ -20,6 +20,8 @@ import {
   ChevronDown,
   User,
 } from "lucide-react";
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged, signOut, User as FirebaseUser } from "firebase/auth";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -36,8 +38,58 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!auth) return;
+
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setLoading(false);
+      
+      if (!currentUser && !loading) {
+        router.push("/login");
+      }
+    });
+
+    return () => unsubscribe();
+  }, [router, loading]);
+
+  const handleSignOut = async () => {
+    if (!auth) return;
+    try {
+      await signOut(auth);
+      localStorage.removeItem("accessToken");
+      document.cookie = "fb-id-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+      router.push("/login");
+    } catch (error) {
+      console.error("Sign out error:", error);
+    }
+  };
+
+  const getUserInitials = () => {
+    if (user?.displayName) {
+      return user.displayName
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .substring(0, 2);
+    }
+    return user?.email?.substring(0, 2).toUpperCase() || "CF";
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[var(--background)] flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[var(--primary)] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[var(--background)]">
@@ -111,16 +163,19 @@ export default function DashboardLayout({
           <div className="p-4 border-t border-[var(--border)]">
             <div className="flex items-center gap-3 p-3 rounded-xl bg-[var(--background-tertiary)]">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--accent)] flex items-center justify-center text-white font-semibold">
-                JD
+                {getUserInitials()}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">John Doe</p>
+                <p className="text-sm font-medium truncate">{user?.displayName || "User"}</p>
                 <p className="text-xs text-[var(--foreground-muted)] truncate">
-                  john@example.com
+                  {user?.email}
                 </p>
               </div>
             </div>
-            <button className="w-full mt-2 flex items-center gap-3 px-4 py-3 rounded-xl text-[var(--foreground-muted)] hover:text-[var(--error)] hover:bg-[var(--background-tertiary)] transition-colors">
+            <button 
+              onClick={handleSignOut}
+              className="w-full mt-2 flex items-center gap-3 px-4 py-3 rounded-xl text-[var(--foreground-muted)] hover:text-[var(--error)] hover:bg-[var(--background-tertiary)] transition-colors"
+            >
               <LogOut className="w-5 h-5" />
               <span className="font-medium">Sign Out</span>
             </button>
@@ -169,7 +224,7 @@ export default function DashboardLayout({
                   className="flex items-center gap-2 p-2 rounded-xl hover:bg-[var(--background-tertiary)] transition-colors"
                 >
                   <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--accent)] flex items-center justify-center text-white text-sm font-semibold">
-                    JD
+                    {getUserInitials()}
                   </div>
                   <ChevronDown className="w-4 h-4 text-[var(--foreground-muted)] hidden sm:block" />
                 </button>
@@ -185,6 +240,7 @@ export default function DashboardLayout({
                       <Link
                         href="/dashboard/settings"
                         className="flex items-center gap-3 px-4 py-3 text-sm text-[var(--foreground-muted)] hover:text-[var(--foreground)] hover:bg-[var(--background-tertiary)] transition-colors"
+                        onClick={() => setUserMenuOpen(false)}
                       >
                         <User className="w-4 h-4" />
                         Profile
@@ -192,12 +248,16 @@ export default function DashboardLayout({
                       <Link
                         href="/dashboard/settings"
                         className="flex items-center gap-3 px-4 py-3 text-sm text-[var(--foreground-muted)] hover:text-[var(--foreground)] hover:bg-[var(--background-tertiary)] transition-colors"
+                        onClick={() => setUserMenuOpen(false)}
                       >
                         <Settings className="w-4 h-4" />
                         Settings
                       </Link>
                       <div className="border-t border-[var(--border)]">
-                        <button className="w-full flex items-center gap-3 px-4 py-3 text-sm text-[var(--error)] hover:bg-[var(--background-tertiary)] transition-colors">
+                        <button 
+                          onClick={handleSignOut}
+                          className="w-full flex items-center gap-3 px-4 py-3 text-sm text-[var(--error)] hover:bg-[var(--background-tertiary)] transition-colors"
+                        >
                           <LogOut className="w-4 h-4" />
                           Sign Out
                         </button>
