@@ -10,7 +10,16 @@ import {
   CardTitle,
 } from "@/components/ui";
 import { Button } from "@/components/ui";
-import { ChevronLeft, ChevronRight, CheckCircle2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, CheckCircle2, X, Plus } from "lucide-react";
+import { auth } from "@/lib/firebase";
+import {
+  connectGoogleCalendar,
+  fetchCalendarEvents,
+  checkCalendarConnection,
+  createCalendarEvent,
+  CalendarEvent,
+} from "@/lib/google-calendar";
+import { Input } from "@/components/ui";
 
 type Platform = "Instagram" | "LinkedIn" | "Twitter";
 
@@ -126,16 +135,67 @@ export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [newEvent, setNewEvent] = useState({
+    title: "",
+    description: "",
+    date: "",
+    startTime: "",
+    endTime: "",
+  });
 
-  const connectTimerRef = useRef<number | null>(null);
   const toastTimerRef = useRef<number | null>(null);
+
+  // Check connection status on mount
+  useEffect(() => {
+    const checkConnection = async () => {
+      try {
+        const connected = await checkCalendarConnection();
+        setIsConnected(connected);
+        
+        if (connected) {
+          await loadCalendarEvents();
+        }
+      } catch (error) {
+        console.error("Error checking calendar connection:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkConnection();
+  }, []);
+
+  // Load calendar events
+  const loadCalendarEvents = async () => {
+    try {
+      const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+      const endOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+      
+      const events = await fetchCalendarEvents(
+        startOfMonth.toISOString(),
+        endOfMonth.toISOString()
+      );
+      
+      setCalendarEvents(events);
+    } catch (error) {
+      console.error("Error loading calendar events:", error);
+    }
+  };
+
+  // Reload events when month changes
+  useEffect(() => {
+    if (isConnected) {
+      loadCalendarEvents();
+    }
+  }, [currentMonth, isConnected]);
 
   useEffect(() => {
     return () => {
-      if (connectTimerRef.current) {
-        window.clearTimeout(connectTimerRef.current);
-      }
       if (toastTimerRef.current) {
         window.clearTimeout(toastTimerRef.current);
       }
@@ -144,14 +204,40 @@ export default function CalendarPage() {
 
   const eventsByDate = useMemo(() => {
     const map = new Map<string, ScheduledItem[]>();
+    
+    // Add scheduled items
     scheduledItems.forEach((item) => {
       if (!map.has(item.date)) {
         map.set(item.date, []);
       }
       map.get(item.date)?.push(item);
     });
+    
+    // Add Google Calendar events
+    calendarEvents.forEach((event) => {
+      const eventDate = new Date(event.start.dateTime);
+      const dateKey = formatDateKey(eventDate);
+      
+      if (!map.has(dateKey)) {
+        map.set(dateKey, []);
+      }
+      
+      // Convert Google Calendar event to ScheduledItem format
+      map.get(dateKey)?.push({
+        id: event.id,
+        title: event.summary,
+        platform: "LinkedIn" as Platform, // Default platform for calendar events
+        status: "Scheduled" as Status,
+        date: dateKey,
+        time: eventDate.toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+        }),
+      });
+    });
+    
     return map;
-  }, []);
+  }, [calendarEvents]);
 
   const calendarCells = useMemo(() => buildCalendarCells(currentMonth), [currentMonth]);
   const todayKey = formatDateKey(new Date());
@@ -170,30 +256,97 @@ export default function CalendarPage() {
     );
   };
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
     if (isConnected || isConnecting) {
       return;
     }
 
     setIsConnecting(true);
 
-    if (connectTimerRef.current) {
-      window.clearTimeout(connectTimerRef.current);
-    }
-
-    connectTimerRef.current = window.setTimeout(() => {
-      setIsConnected(true);
+    try {
+      const result = await connectGoogleCalendar();
+      
+      if (result.success) {
+        setIsConnected(true);
+        setToastMessage("Connected to Google Calendar");
+        
+        // Load calendar events after successful connection
+        await loadCalendarEvents();
+      } else {
+        setToastMessage(result.error || "Failed to connect to Google Calendar");
+      }
+    } catch (error: any) {
+      console.error("Connection error:", error);
+      setToastMessage(error.message || "Failed to connect to Google Calendar");
+    } finally {
       setIsConnecting(false);
-      setToastMessage("Connected to Google Calendar");
-
+      
       if (toastTimerRef.current) {
         window.clearTimeout(toastTimerRef.current);
       }
 
       toastTimerRef.current = window.setTimeout(() => {
         setToastMessage(null);
-      }, 2500);
-    }, 1500);
+      }, 3000);
+    }
+  };
+
+  const handleCreateEvent = async () => {
+    if (!newEvent.title || !newEvent.date || !newEvent.startTime || !newEvent.endTime) {
+      setToastMessage("Please fill in all required fields");
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+      toastTimerRef.current = window.setTimeout(() => {
+        setToastMessage(null);
+      }, 3000);
+      return;
+    }
+
+    setIsCreating(true);
+
+    try {
+      const startDateTime = `${newEvent.date}T${newEvent.startTime}:00`;
+      const endDateTime = `${newEvent.date}T${newEvent.endTime}:00`;
+
+      const result = await createCalendarEvent({
+        summary: newEvent.title,
+        description: newEvent.description,
+        start: startDateTime,
+        end: endDateTime,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      });
+
+      if (result.success) {
+        setToastMessage("Event created successfully!");
+        setShowCreateModal(false);
+        setNewEvent({
+          title: "",
+          description: "",
+          date: "",
+          startTime: "",
+          endTime: "",
+        });
+        
+        // Reload calendar events
+        await loadCalendarEvents();
+      } else {
+        setToastMessage(result.error || "Failed to create event");
+      }
+    } catch (error: any) {
+      console.error("Create event error:", error);
+      setToastMessage(error.message || "Failed to create event");
+    } finally {
+      setIsCreating(false);
+      
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+
+      toastTimerRef.current = window.setTimeout(() => {
+        setToastMessage(null);
+      }, 3000);
+    }
   };
 
   const selectedKey = selectedDate ? formatDateKey(selectedDate) : null;
@@ -214,6 +367,12 @@ export default function CalendarPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {isConnected && (
+            <Button onClick={() => setShowCreateModal(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Create Event
+            </Button>
+          )}
           {isConnected ? (
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-200">
               <CheckCircle2 className="h-4 w-4" />
@@ -387,6 +546,102 @@ export default function CalendarPage() {
                 Close
               </Button>
             </CardFooter>
+          </div>
+        </div>
+      )}
+
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-lg rounded-xl border border-white/10 bg-[var(--background-secondary)] p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-lg font-semibold">Create Calendar Event</h2>
+                <p className="text-sm text-[var(--foreground-muted)]">
+                  Add a new event to your Google Calendar
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                className="rounded-full border border-white/10 p-2 text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Event Title <span className="text-red-400">*</span>
+                </label>
+                <Input
+                  type="text"
+                  placeholder="e.g., Team Meeting"
+                  value={newEvent.title}
+                  onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Description</label>
+                <textarea
+                  placeholder="Add event description (optional)"
+                  value={newEvent.description}
+                  onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
+                  className="w-full rounded-xl border border-white/10 bg-[var(--background-tertiary)] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--primary)] min-h-[80px]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Date <span className="text-red-400">*</span>
+                </label>
+                <Input
+                  type="date"
+                  value={newEvent.date}
+                  onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Start Time <span className="text-red-400">*</span>
+                  </label>
+                  <Input
+                    type="time"
+                    value={newEvent.startTime}
+                    onChange={(e) => setNewEvent({ ...newEvent, startTime: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    End Time <span className="text-red-400">*</span>
+                  </label>
+                  <Input
+                    type="time"
+                    value={newEvent.endTime}
+                    onChange={(e) => setNewEvent({ ...newEvent, endTime: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-3 border-t border-white/10 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setShowCreateModal(false)}
+                disabled={isCreating}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreateEvent}
+                isLoading={isCreating}
+              >
+                Create Event
+              </Button>
+            </div>
           </div>
         </div>
       )}
