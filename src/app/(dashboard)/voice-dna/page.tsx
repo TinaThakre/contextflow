@@ -58,6 +58,8 @@ export default function VoiceDnaPage() {
   const [progress, setProgress] = useState(0);
   const [isAnalyzed, setIsAnalyzed] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [scrapedPosts, setScrapedPosts] = useState<any[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   const intervalRef = useRef<number | null>(null);
   const confirmTimerRef = useRef<number | null>(null);
@@ -75,7 +77,7 @@ export default function VoiceDnaPage() {
 
   const isEmpty = !instagram.trim() && !twitter.trim() && !linkedIn.trim();
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     if (isEmpty || isAnalyzing) {
       return;
     }
@@ -83,24 +85,96 @@ export default function VoiceDnaPage() {
     setIsAnalyzed(false);
     setIsAnalyzing(true);
     setProgress(0);
+    setError(null);
+    setScrapedPosts([]);
 
-    if (intervalRef.current) {
-      window.clearInterval(intervalRef.current);
-    }
+    try {
+      // Get Firebase auth token
+      const { auth } = await import("@/lib/firebase");
+      if (!auth?.currentUser) {
+        throw new Error("Please log in to continue");
+      }
 
-    intervalRef.current = window.setInterval(() => {
-      setProgress((prev) => {
-        const next = Math.min(prev + 5, 100);
-        if (next === 100) {
-          if (intervalRef.current) {
-            window.clearInterval(intervalRef.current);
-          }
-          setIsAnalyzing(false);
-          setIsAnalyzed(true);
-        }
-        return next;
+      const idToken = await auth.currentUser.getIdToken();
+
+      // Prepare platforms data
+      const platforms = [];
+      if (instagram.trim()) {
+        platforms.push({ platform: 'instagram', username: instagram.trim().replace('@', '') });
+      }
+      if (twitter.trim()) {
+        platforms.push({ platform: 'twitter', username: twitter.trim().replace('@', '') });
+      }
+      if (linkedIn.trim()) {
+        platforms.push({ platform: 'linkedin', username: linkedIn.trim() });
+      }
+
+      // Start progress animation
+      if (intervalRef.current) {
+        window.clearInterval(intervalRef.current);
+      }
+
+      intervalRef.current = window.setInterval(() => {
+        setProgress((prev) => Math.min(prev + 2, 90));
+      }, 100);
+
+      // Call scrape API
+      const response = await fetch("/api/social/scrape", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ 
+          platforms,
+          limit: 50,
+        }),
       });
-    }, 100);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to scrape social media");
+      }
+
+      const data = await response.json();
+      
+      console.log('API Response:', data);
+      console.log('Results:', data.results);
+      
+      // Collect all posts from all platforms
+      const allPosts: any[] = [];
+      Object.entries(data.results || {}).forEach(([platform, result]: [string, any]) => {
+        console.log(`Processing platform: ${platform}`, result);
+        if (result.success && result.posts) {
+          result.posts.forEach((post: any) => {
+            allPosts.push({
+              ...post,
+              platform: platform,
+            });
+          });
+        }
+      });
+
+      console.log('All scraped posts:', allPosts);
+      setScrapedPosts(allPosts);
+      setProgress(100);
+      
+      if (intervalRef.current) {
+        window.clearInterval(intervalRef.current);
+      }
+
+      setIsAnalyzing(false);
+      setIsAnalyzed(true);
+    } catch (err: any) {
+      console.error("Analysis error:", err);
+      setError(err.message || "Failed to analyze posts");
+      setIsAnalyzing(false);
+      setProgress(0);
+      
+      if (intervalRef.current) {
+        window.clearInterval(intervalRef.current);
+      }
+    }
   };
 
   const handleConfirm = () => {
@@ -151,6 +225,11 @@ export default function VoiceDnaPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {error && (
+            <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
+              {error}
+            </div>
+          )}
           <Input
             label="Instagram Username"
             placeholder="@creatorname"
@@ -209,38 +288,84 @@ export default function VoiceDnaPage() {
           <div className="text-center space-y-2">
             <h2 className="text-2xl font-semibold">Post Preview</h2>
             <p className="text-[var(--foreground-muted)]">
-              Review the latest posts we found before building your Voice DNA.
+              {scrapedPosts.length > 0 
+                ? `Review ${scrapedPosts.length} posts we found before building your Voice DNA.`
+                : "No posts found. Showing sample data."
+              }
             </p>
+            {scrapedPosts.length === 0 && (
+              <p className="text-xs text-amber-400">
+                Debug: scrapedPosts array is empty. Check browser console for API response.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {mockPosts.map((post) => (
-              <div
-                key={post.id}
-                className="rounded-xl border border-white/10 bg-[var(--background-tertiary)] p-4 space-y-3 hover:border-white/20 transition-colors"
-              >
-                <div className="flex items-center justify-between">
-                  <span
-                    className={`text-xs rounded-full border px-2 py-0.5 ${platformBadgeStyles[post.platform]}`}
+            {scrapedPosts.length > 0 ? (
+              scrapedPosts.slice(0, 12).map((post) => {
+                const platformMap: Record<string, Platform> = {
+                  instagram: 'IG',
+                  twitter: 'X',
+                  linkedin: 'LinkedIn',
+                };
+                const displayPlatform = platformMap[post.platform] || 'IG';
+                
+                return (
+                  <div
+                    key={post.id}
+                    className="rounded-xl border border-white/10 bg-[var(--background-tertiary)] p-4 space-y-3 hover:border-white/20 transition-colors"
                   >
-                    {post.platform}
-                  </span>
-                  <span className="text-xs text-[var(--foreground-muted)]">
-                    {post.type === "image" ? "Image" : "Text"}
-                  </span>
-                </div>
-                {post.type === "image" ? (
-                  <div className="h-20 rounded-lg bg-gradient-to-br from-[var(--background-secondary)] to-[var(--background)] border border-white/10" />
-                ) : (
-                  <div className="space-y-2">
-                    <div className="h-2 w-3/4 rounded-full bg-white/10" />
-                    <div className="h-2 w-full rounded-full bg-white/10" />
-                    <div className="h-2 w-2/3 rounded-full bg-white/10" />
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={`text-xs rounded-full border px-2 py-0.5 ${platformBadgeStyles[displayPlatform]}`}
+                      >
+                        {displayPlatform}
+                      </span>
+                      <span className="text-xs text-[var(--foreground-muted)]">
+                        Text
+                      </span>
+                    </div>
+                    <div className="space-y-2 min-h-[60px]">
+                      <p className="text-xs text-[var(--foreground-muted)] line-clamp-3">
+                        {post.text || 'No text content'}
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-[var(--foreground-muted)]">
+                      <span>❤️ {post.likes || 0}</span>
+                      <span>💬 {post.comments || 0}</span>
+                    </div>
                   </div>
-                )}
-                <p className="text-sm font-medium">{post.title}</p>
-              </div>
-            ))}
+                );
+              })
+            ) : (
+              mockPosts.map((post) => (
+                <div
+                  key={post.id}
+                  className="rounded-xl border border-white/10 bg-[var(--background-tertiary)] p-4 space-y-3 hover:border-white/20 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <span
+                      className={`text-xs rounded-full border px-2 py-0.5 ${platformBadgeStyles[post.platform]}`}
+                    >
+                      {post.platform}
+                    </span>
+                    <span className="text-xs text-[var(--foreground-muted)]">
+                      {post.type === "image" ? "Image" : "Text"}
+                    </span>
+                  </div>
+                  {post.type === "image" ? (
+                    <div className="h-20 rounded-lg bg-gradient-to-br from-[var(--background-secondary)] to-[var(--background)] border border-white/10" />
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="h-2 w-3/4 rounded-full bg-white/10" />
+                      <div className="h-2 w-full rounded-full bg-white/10" />
+                      <div className="h-2 w-2/3 rounded-full bg-white/10" />
+                    </div>
+                  )}
+                  <p className="text-sm font-medium">{post.title}</p>
+                </div>
+              ))
+            )}
           </div>
 
           <div className="flex flex-col items-center gap-3">

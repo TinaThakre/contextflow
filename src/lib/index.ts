@@ -15,3 +15,10 @@ export type {
 } from "./supabase";
 export { uploadFileToS3, getUploadSignedUrl, getDownloadSignedUrl, deleteFileFromS3, listFiles } from "./aws";
 export { cn, formatRelativeTime, formatNumber, generateId, debounce, truncate, platformColors, platformNames } from "./utils";
+export { 
+  scrapeInstagram, 
+  scrapeLinkedIn, 
+  scrapeTwitter, 
+  scrapeMultiplePlatforms 
+} from "./social-scrapers";
+export type { ScrapedPost, ScraperResult } from "./social-scrapers";

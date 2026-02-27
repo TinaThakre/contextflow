@@ -194,3 +194,172 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    // Get user from auth header
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const token = authHeader.substring(7);
+    const auth = getAuth();
+    
+    let decodedToken;
+    try {
+      decodedToken = await auth.verifyIdToken(token);
+    } catch (authError) {
+      return NextResponse.json(
+        { error: 'Invalid token' },
+        { status: 401 }
+      );
+    }
+
+    const userId = decodedToken.uid;
+    const accessToken = await getUserAccessToken(userId);
+
+    if (!accessToken) {
+      return NextResponse.json(
+        { error: 'Calendar not connected' },
+        { status: 400 }
+      );
+    }
+
+    const { searchParams } = new URL(request.url);
+    const eventId = searchParams.get('eventId');
+
+    if (!eventId) {
+      return NextResponse.json(
+        { error: 'Missing eventId parameter' },
+        { status: 400 }
+      );
+    }
+
+    // Delete event from Google Calendar
+    const response = await fetch(
+      `${GOOGLE_CALENDAR_API}/calendars/primary/events/${eventId}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    if (!response.ok && response.status !== 204) {
+      const error = await response.json();
+      throw new Error(error.error?.message || 'Failed to delete calendar event');
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('Delete calendar event error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    // Get user from auth header
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const token = authHeader.substring(7);
+    const auth = getAuth();
+    
+    let decodedToken;
+    try {
+      decodedToken = await auth.verifyIdToken(token);
+    } catch (authError) {
+      return NextResponse.json(
+        { error: 'Invalid token' },
+        { status: 401 }
+      );
+    }
+
+    const userId = decodedToken.uid;
+    const accessToken = await getUserAccessToken(userId);
+
+    if (!accessToken) {
+      return NextResponse.json(
+        { error: 'Calendar not connected' },
+        { status: 400 }
+      );
+    }
+
+    const { searchParams } = new URL(request.url);
+    const eventId = searchParams.get('eventId');
+
+    if (!eventId) {
+      return NextResponse.json(
+        { error: 'Missing eventId parameter' },
+        { status: 400 }
+      );
+    }
+
+    const body = await request.json();
+    const { summary, description, start, end, timeZone = 'UTC', status } = body;
+
+    // Build update data
+    const eventData: any = {};
+    
+    if (summary) eventData.summary = summary;
+    if (description !== undefined) eventData.description = description;
+    if (status) eventData.status = status;
+    
+    if (start && end) {
+      eventData.start = {
+        dateTime: start,
+        timeZone,
+      };
+      eventData.end = {
+        dateTime: end,
+        timeZone,
+      };
+    }
+
+    // Update event in Google Calendar
+    const response = await fetch(
+      `${GOOGLE_CALENDAR_API}/calendars/primary/events/${eventId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(eventData),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message || 'Failed to update calendar event');
+    }
+
+    const data = await response.json();
+
+    return NextResponse.json({
+      success: true,
+      eventId: data.id,
+    });
+  } catch (error: any) {
+    console.error('Update calendar event error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+

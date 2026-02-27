@@ -88,6 +88,9 @@ export const config = {
   // External APIs
   external: {
     rapidApiKey: process.env.RAPIDAPI_KEY || "",
+    rapidApiHostInstagram: process.env.RAPIDAPI_HOST_INSTAGRAM || "instagram-scraper-api2.p.rapidapi.com",
+    rapidApiHostLinkedIn: process.env.RAPIDAPI_HOST_LINKEDIN || "linkedin-data-api.p.rapidapi.com",
+    rapidApiHostTwitter: process.env.RAPIDAPI_HOST_TWITTER || "twitter-api45.p.rapidapi.com",
     proxycurlApiKey: process.env.PROXYCURL_API_KEY || "",
     newsApiKey: process.env.NEWS_API_KEY || "",
   },

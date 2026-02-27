@@ -214,6 +214,87 @@ export async function checkCalendarConnection(): Promise<boolean> {
 }
 
 /**
+ * Delete a calendar event
+ */
+export async function deleteCalendarEvent(eventId: string): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    if (!auth?.currentUser) {
+      throw new Error('User not authenticated');
+    }
+
+    const idToken = await auth.currentUser.getIdToken();
+    
+    const response = await fetch(`/api/calendar/events?eventId=${eventId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${idToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to delete calendar event');
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error deleting calendar event:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to delete calendar event',
+    };
+  }
+}
+
+/**
+ * Update a calendar event
+ */
+export async function updateCalendarEvent(
+  eventId: string,
+  event: {
+    summary: string;
+    description?: string;
+    start: string;
+    end: string;
+    timeZone?: string;
+    status?: string;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!auth?.currentUser) {
+      throw new Error('User not authenticated');
+    }
+
+    const idToken = await auth.currentUser.getIdToken();
+    
+    const response = await fetch(`/api/calendar/events?eventId=${eventId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`,
+      },
+      body: JSON.stringify(event),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to update calendar event');
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error updating calendar event:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to update calendar event',
+    };
+  }
+}
+
+/**
  * Disconnect Google Calendar
  */
 export async function disconnectGoogleCalendar(): Promise<{

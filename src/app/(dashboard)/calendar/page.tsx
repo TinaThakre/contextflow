@@ -17,6 +17,8 @@ import {
   fetchCalendarEvents,
   checkCalendarConnection,
   createCalendarEvent,
+  deleteCalendarEvent,
+  updateCalendarEvent,
   CalendarEvent,
 } from "@/lib/google-calendar";
 import { Input } from "@/components/ui";
@@ -47,48 +49,7 @@ const statusStyles: Record<Status, string> = {
   Draft: "bg-amber-500/10 text-amber-300 border-amber-500/30",
 };
 
-const scheduledItems: ScheduledItem[] = [
-  {
-    id: "item-1",
-    title: "Founder story thread",
-    platform: "Twitter",
-    status: "Scheduled",
-    date: "2026-02-28",
-    time: "09:00 AM",
-  },
-  {
-    id: "item-2",
-    title: "Product update carousel",
-    platform: "Instagram",
-    status: "Scheduled",
-    date: "2026-03-03",
-    time: "12:30 PM",
-  },
-  {
-    id: "item-3",
-    title: "Partnership announcement",
-    platform: "LinkedIn",
-    status: "Draft",
-    date: "2026-03-05",
-    time: "10:00 AM",
-  },
-  {
-    id: "item-4",
-    title: "Behind-the-scenes clip",
-    platform: "Instagram",
-    status: "Scheduled",
-    date: "2026-03-07",
-    time: "04:15 PM",
-  },
-  {
-    id: "item-5",
-    title: "Weekly growth lesson",
-    platform: "LinkedIn",
-    status: "Scheduled",
-    date: "2026-03-10",
-    time: "08:45 AM",
-  },
-];
+// Removed dummy data - now showing only real Google Calendar events
 
 const formatDateKey = (date: Date) => {
   const year = date.getFullYear();
@@ -138,6 +99,7 @@ export default function CalendarPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [allUpcomingEvents, setAllUpcomingEvents] = useState<CalendarEvent[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [newEvent, setNewEvent] = useState({
@@ -147,6 +109,9 @@ export default function CalendarPage() {
     startTime: "",
     endTime: "",
   });
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const toastTimerRef = useRef<number | null>(null);
 
@@ -158,7 +123,7 @@ export default function CalendarPage() {
         setIsConnected(connected);
         
         if (connected) {
-          await loadCalendarEvents();
+          await Promise.all([loadCalendarEvents(), loadAllUpcomingEvents()]);
         }
       } catch (error) {
         console.error("Error checking calendar connection:", error);
@@ -170,7 +135,24 @@ export default function CalendarPage() {
     checkConnection();
   }, []);
 
-  // Load calendar events
+  // Load all upcoming events (next 3 months) for sidebar
+  const loadAllUpcomingEvents = async () => {
+    try {
+      const now = new Date();
+      const threeMonthsLater = new Date(now.getFullYear(), now.getMonth() + 3, now.getDate());
+      
+      const events = await fetchCalendarEvents(
+        now.toISOString(),
+        threeMonthsLater.toISOString()
+      );
+      
+      setAllUpcomingEvents(events);
+    } catch (error) {
+      console.error("Error loading upcoming events:", error);
+    }
+  };
+
+  // Load calendar events for current month view
   const loadCalendarEvents = async () => {
     try {
       const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
@@ -187,7 +169,7 @@ export default function CalendarPage() {
     }
   };
 
-  // Reload events when month changes
+  // Reload events when month changes (only for calendar grid)
   useEffect(() => {
     if (isConnected) {
       loadCalendarEvents();
@@ -204,14 +186,6 @@ export default function CalendarPage() {
 
   const eventsByDate = useMemo(() => {
     const map = new Map<string, ScheduledItem[]>();
-    
-    // Add scheduled items
-    scheduledItems.forEach((item) => {
-      if (!map.has(item.date)) {
-        map.set(item.date, []);
-      }
-      map.get(item.date)?.push(item);
-    });
     
     // Add Google Calendar events
     calendarEvents.forEach((event) => {
@@ -328,8 +302,8 @@ export default function CalendarPage() {
           endTime: "",
         });
         
-        // Reload calendar events
-        await loadCalendarEvents();
+        // Reload both calendar views
+        await Promise.all([loadCalendarEvents(), loadAllUpcomingEvents()]);
       } else {
         setToastMessage(result.error || "Failed to create event");
       }
@@ -356,6 +330,176 @@ export default function CalendarPage() {
     month: "long",
     year: "numeric",
   });
+
+  // Get upcoming events (next 5 from the 3-month range)
+  const upcomingEvents = useMemo(() => {
+    const now = new Date();
+    return allUpcomingEvents
+      .filter((event) => new Date(event.start.dateTime) >= now)
+      .sort((a, b) => new Date(a.start.dateTime).getTime() - new Date(b.start.dateTime).getTime())
+      .slice(0, 5);
+  }, [allUpcomingEvents]);
+
+  const handleEditEvent = (eventId: string) => {
+    // Look in both calendar events and all upcoming events
+    const event = allUpcomingEvents.find((e) => e.id === eventId) || 
+                  calendarEvents.find((e) => e.id === eventId);
+    if (event) {
+      const startDate = new Date(event.start.dateTime);
+      const endDate = new Date(event.end.dateTime);
+      
+      setEditingEvent(event);
+      setNewEvent({
+        title: event.summary,
+        description: event.description || "",
+        date: startDate.toISOString().split('T')[0],
+        startTime: startDate.toTimeString().slice(0, 5),
+        endTime: endDate.toTimeString().slice(0, 5),
+      });
+      setShowEditModal(true);
+    }
+  };
+
+  const handleUpdateEvent = async () => {
+    if (!editingEvent || !newEvent.title || !newEvent.date || !newEvent.startTime || !newEvent.endTime) {
+      setToastMessage("Please fill in all required fields");
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+      toastTimerRef.current = window.setTimeout(() => {
+        setToastMessage(null);
+      }, 3000);
+      return;
+    }
+
+    setIsCreating(true);
+
+    try {
+      const startDateTime = `${newEvent.date}T${newEvent.startTime}:00`;
+      const endDateTime = `${newEvent.date}T${newEvent.endTime}:00`;
+
+      const result = await updateCalendarEvent(editingEvent.id, {
+        summary: newEvent.title,
+        description: newEvent.description,
+        start: startDateTime,
+        end: endDateTime,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      });
+
+      if (result.success) {
+        setToastMessage("Event updated successfully!");
+        setShowEditModal(false);
+        setEditingEvent(null);
+        setNewEvent({
+          title: "",
+          description: "",
+          date: "",
+          startTime: "",
+          endTime: "",
+        });
+        
+        // Reload both calendar views
+        await Promise.all([loadCalendarEvents(), loadAllUpcomingEvents()]);
+      } else {
+        setToastMessage(result.error || "Failed to update event");
+      }
+    } catch (error: any) {
+      console.error("Update event error:", error);
+      setToastMessage(error.message || "Failed to update event");
+    } finally {
+      setIsCreating(false);
+      
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+
+      toastTimerRef.current = window.setTimeout(() => {
+        setToastMessage(null);
+      }, 3000);
+    }
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    if (!confirm("Are you sure you want to delete this event?")) {
+      return;
+    }
+
+    setIsDeleting(true);
+
+    try {
+      const result = await deleteCalendarEvent(eventId);
+
+      if (result.success) {
+        setToastMessage("Event deleted successfully!");
+        setSelectedDate(null);
+        setShowEditModal(false);
+        setEditingEvent(null);
+        
+        // Reload both calendar views
+        await Promise.all([loadCalendarEvents(), loadAllUpcomingEvents()]);
+      } else {
+        setToastMessage(result.error || "Failed to delete event");
+      }
+    } catch (error: any) {
+      console.error("Delete event error:", error);
+      setToastMessage(error.message || "Failed to delete event");
+    } finally {
+      setIsDeleting(false);
+      
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+
+      toastTimerRef.current = window.setTimeout(() => {
+        setToastMessage(null);
+      }, 3000);
+    }
+  };
+
+  const handleMarkAsCompleted = async (eventId: string) => {
+    setIsDeleting(true);
+
+    try {
+      const event = allUpcomingEvents.find((e) => e.id === eventId) || 
+                    calendarEvents.find((e) => e.id === eventId);
+      
+      if (!event) {
+        throw new Error("Event not found");
+      }
+
+      const result = await updateCalendarEvent(eventId, {
+        summary: `✓ ${event.summary}`,
+        description: event.description || "",
+        start: event.start.dateTime,
+        end: event.end.dateTime,
+        timeZone: event.start.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+        status: "confirmed",
+      });
+
+      if (result.success) {
+        setToastMessage("Event marked as completed!");
+        setSelectedDate(null);
+        
+        // Reload both calendar views
+        await Promise.all([loadCalendarEvents(), loadAllUpcomingEvents()]);
+      } else {
+        setToastMessage(result.error || "Failed to mark event as completed");
+      }
+    } catch (error: any) {
+      console.error("Mark as completed error:", error);
+      setToastMessage(error.message || "Failed to mark event as completed");
+    } finally {
+      setIsDeleting(false);
+      
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+
+      toastTimerRef.current = window.setTimeout(() => {
+        setToastMessage(null);
+      }, 3000);
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -457,34 +601,64 @@ export default function CalendarPage() {
 
         <Card className="border-white/10" padding="lg">
           <CardHeader>
-            <CardTitle>Upcoming Content</CardTitle>
-            <CardDescription>Next scheduled posts across platforms.</CardDescription>
+            <CardTitle>Upcoming Events</CardTitle>
+            <CardDescription>Next scheduled events from your calendar.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {scheduledItems.map((item) => (
-              <div
-                key={item.id}
-                className="rounded-xl border border-white/10 bg-[var(--background-tertiary)] p-4 space-y-3"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold">{item.title}</span>
-                  <span
-                    className={`rounded-full border px-2 py-0.5 text-xs ${statusStyles[item.status]}`}
-                  >
-                    {item.status}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-xs text-[var(--foreground-muted)]">
-                  <span>{item.platform}</span>
-                  <span>
-                    {item.date} · {item.time}
-                  </span>
-                </div>
-                <Button variant="secondary" size="sm">
-                  Edit
-                </Button>
+            {isLoading ? (
+              <div className="text-center py-8 text-[var(--foreground-muted)]">
+                Loading events...
               </div>
-            ))}
+            ) : upcomingEvents.length === 0 ? (
+              <div className="text-center py-8 text-[var(--foreground-muted)]">
+                No upcoming events. Create one to get started!
+              </div>
+            ) : (
+              upcomingEvents.map((event) => {
+                const startDate = new Date(event.start.dateTime);
+                return (
+                  <div
+                    key={event.id}
+                    className="rounded-xl border border-white/10 bg-[var(--background-tertiary)] p-4 space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold">{event.summary}</span>
+                      <span
+                        className="rounded-full border px-2 py-0.5 text-xs bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+                      >
+                        Scheduled
+                      </span>
+                    </div>
+                    {event.description && (
+                      <p className="text-xs text-[var(--foreground-muted)] line-clamp-2">
+                        {event.description}
+                      </p>
+                    )}
+                    <div className="flex items-center justify-between text-xs text-[var(--foreground-muted)]">
+                      <span>
+                        {startDate.toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </span>
+                      <span>
+                        {startDate.toLocaleTimeString("en-US", {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </div>
+                    <Button 
+                      variant="secondary" 
+                      size="sm"
+                      onClick={() => handleEditEvent(event.id)}
+                    >
+                      Edit
+                    </Button>
+                  </div>
+                );
+              })
+            )}
           </CardContent>
         </Card>
       </div>
@@ -515,14 +689,14 @@ export default function CalendarPage() {
 
             <div className="mt-4 space-y-3">
               {selectedItems.length === 0 ? (
-                <div className="rounded-xl border border-white/10 bg-[var(--background-tertiary)] p-4 text-sm text-[var(--foreground-muted)]">
-                  No scheduled posts for this date yet.
+                <div className="rounded-xl border border-white/10 bg-[var(--background-tertiary)] p-4 text-sm text-[var(--foreground-muted)] text-center">
+                  No scheduled events for this date yet.
                 </div>
               ) : (
                 selectedItems.map((item) => (
                   <div
                     key={item.id}
-                    className="rounded-xl border border-white/10 bg-[var(--background-tertiary)] p-4"
+                    className="rounded-xl border border-white/10 bg-[var(--background-tertiary)] p-4 space-y-3"
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-semibold">{item.title}</span>
@@ -536,12 +710,37 @@ export default function CalendarPage() {
                       <span>{item.platform}</span>
                       <span>{item.time}</span>
                     </div>
+                    <Button 
+                      variant="secondary" 
+                      size="sm"
+                      onClick={() => handleEditEvent(item.id)}
+                    >
+                      Edit
+                    </Button>
                   </div>
                 ))
               )}
             </div>
 
-            <CardFooter className="mt-6 border-t border-white/10 pt-4 justify-end">
+            <CardFooter className="mt-6 border-t border-white/10 pt-4 justify-between">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  const dateStr = selectedDate.toISOString().split('T')[0];
+                  setNewEvent({
+                    title: "",
+                    description: "",
+                    date: dateStr,
+                    startTime: "09:00",
+                    endTime: "10:00",
+                  });
+                  setSelectedDate(null);
+                  setShowCreateModal(true);
+                }}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Create Event
+              </Button>
               <Button variant="outline" onClick={() => setSelectedDate(null)}>
                 Close
               </Button>
@@ -550,19 +749,34 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {showCreateModal && (
+      {(showCreateModal || showEditModal) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-lg rounded-xl border border-white/10 bg-[var(--background-secondary)] p-6">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-lg font-semibold">Create Calendar Event</h2>
+                <h2 className="text-lg font-semibold">
+                  {showEditModal ? "Edit Calendar Event" : "Create Calendar Event"}
+                </h2>
                 <p className="text-sm text-[var(--foreground-muted)]">
-                  Add a new event to your Google Calendar
+                  {showEditModal 
+                    ? "Update your event details" 
+                    : "Add a new event to your Google Calendar"}
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setShowCreateModal(false)}
+                onClick={() => {
+                  setShowCreateModal(false);
+                  setShowEditModal(false);
+                  setEditingEvent(null);
+                  setNewEvent({
+                    title: "",
+                    description: "",
+                    date: "",
+                    startTime: "",
+                    endTime: "",
+                  });
+                }}
                 className="rounded-full border border-white/10 p-2 text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
               >
                 <X className="h-4 w-4" />
@@ -627,20 +841,54 @@ export default function CalendarPage() {
               </div>
             </div>
 
-            <div className="mt-6 flex items-center justify-end gap-3 border-t border-white/10 pt-4">
-              <Button
-                variant="outline"
-                onClick={() => setShowCreateModal(false)}
-                disabled={isCreating}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleCreateEvent}
-                isLoading={isCreating}
-              >
-                Create Event
-              </Button>
+            <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4">
+              <div className="flex items-center gap-2">
+                {showEditModal && editingEvent && (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleMarkAsCompleted(editingEvent.id)}
+                      disabled={isCreating || isDeleting}
+                    >
+                      ✓ Mark Complete
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleDeleteEvent(editingEvent.id)}
+                      disabled={isCreating || isDeleting}
+                      className="text-red-400 hover:text-red-300 border-red-400/30"
+                    >
+                      Delete Event
+                    </Button>
+                  </>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    setShowEditModal(false);
+                    setEditingEvent(null);
+                    setNewEvent({
+                      title: "",
+                      description: "",
+                      date: "",
+                      startTime: "",
+                      endTime: "",
+                    });
+                  }}
+                  disabled={isCreating}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={showEditModal ? handleUpdateEvent : handleCreateEvent}
+                  isLoading={isCreating}
+                >
+                  {showEditModal ? "Update Event" : "Create Event"}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
