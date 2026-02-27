@@ -115,17 +115,20 @@ export default function DashboardPage() {
         className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
       >
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">Welcome back! 👋</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Welcome back!</h1>
           <p className="text-[var(--foreground-muted)] mt-1">
             Here's what's happening with your content
           </p>
         </div>
         <Link
-          href="/dashboard/generate"
-          className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] text-white font-semibold hover:scale-105 transition-transform hover-glow"
+          href="/captions"
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-full 
+          bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] 
+          text-white font-semibold 
+          hover:scale-105 transition-transform hover-glow"
         >
-          <Wand2 className="w-5 h-5" />
-          Generate Content
+          <Wand2 className="w-5 h-5 text-white" />
+          <span className="text-white">Generate</span>
         </Link>
       </motion.div>
 
@@ -247,13 +250,13 @@ export default function DashboardPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-[var(--primary)]" />
+                <div className="w-3 h-3 rotate-45 bg-[var(--primary)] rounded-sm" />
                 Quick Generate
               </CardTitle>
             </CardHeader>
             <CardContent>
               <Link
-                href="/dashboard/generate"
+                href="/captions"
                 className="block w-full p-4 rounded-xl bg-gradient-to-r from-[var(--primary)]/20 to-[var(--secondary)]/20 border border-[var(--primary)]/30 hover:border-[var(--primary)]/50 transition-colors text-center"
               >
                 <Wand2 className="w-6 h-6 mx-auto mb-2 text-[var(--primary-light)]" />

@@ -25,10 +25,10 @@ import { onAuthStateChanged, signOut, User as FirebaseUser } from "firebase/auth
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Generate", href: "/dashboard/generate", icon: Wand2 },
-  { name: "Calendar", href: "/dashboard/calendar", icon: Calendar },
-  { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
-  { name: "Voice DNA", href: "/dashboard/voice-dna", icon: Dna },
+  { name: "Generate Captions", href: "/captions", icon: Wand2 },
+  { name: "Calendar", href: "/calendar", icon: Calendar },
+  { name: "Generate Hashtag", href: "/dashboard/hashtag", icon: BarChart3 },
+  { name: "Voice DNA", href: "/voice-dna", icon: Dna },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 
@@ -120,9 +120,7 @@ export default function DashboardLayout({
           {/* Logo */}
           <div className="flex items-center justify-between h-16 px-6 border-b border-[var(--border)]">
             <Link href="/dashboard" className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] flex items-center justify-center">
-                <Sparkles className="w-4 h-4 text-white" />
-              </div>
+             
               <span className="text-lg font-bold text-gradient">ContextFlow</span>
             </Link>
             <button

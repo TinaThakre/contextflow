@@ -41,8 +41,7 @@ graph TB
     end
     
     subgraph "Data Layer"
-        Supabase[(Supabase PostgreSQL<br/>Relational Data)]
-        FirebaseAuth[(Firebase Auth)]
+        Supabase[(Supabase PostgreSQL<br/>Auth + Relational Data)]
         Pinecone[(Pinecone<br/>Vector Store)]
         Redis[(Upstash Redis<br/>Cache + Rate Limiting)]
         R2[(Cloudflare R2<br/>Image Storage)]
@@ -68,7 +67,7 @@ graph TB
     Web --> Trends
     Web --> Analytics
     
-    Auth --> FirebaseAuth
+    Auth --> Supabase
     Content --> Router
     Content --> Pinecone
     Content --> Redis
