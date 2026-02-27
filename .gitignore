@@ -41,4 +41,6 @@ yarn-error.log*
 next-env.d.ts
 md/
 .kiro/**
-instagram_data.json
+# instagram_data.json
+# instagram_data_copy.json
+*.md*

@@ -87,6 +87,7 @@ export async function GET(request: NextRequest) {
       },
       recentContent: recentContent.slice(0, 5),
       connectedPlatforms,
+      scrapedData: scrapeData, // Include full scraped data for history page
     });
   } catch (error: any) {
     console.error('Dashboard stats error:', error);

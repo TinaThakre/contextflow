@@ -1,11 +1,51 @@
 /**
  * POST /api/social/scrape
  * Scrape social media posts for Voice DNA analysis
+ * Saves to both Firestore (legacy) and Supabase (Voice DNA pipeline)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 import { scrapeMultiplePlatforms } from '@/lib/social-scrapers';
+import { bulkSavePosts } from '@/lib/database';
+import { StoredPost } from '@/types/voice-dna';
+
+// Extract media URLs from post
+function extractMediaUrls(post: any): string[] {
+  const urls: string[] = [];
+
+  if (post.video_versions && post.video_versions.length > 0) {
+    urls.push(post.video_versions[0].url);
+  }
+
+  if (post.image_versions2?.candidates && post.image_versions2.candidates.length > 0) {
+    urls.push(post.image_versions2.candidates[0].url);
+  }
+
+  if (post.carousel_media) {
+    for (const media of post.carousel_media) {
+      if (media.image_versions2?.candidates?.[0]?.url) {
+        urls.push(media.image_versions2.candidates[0].url);
+      }
+    }
+  }
+
+  return urls;
+}
+
+// Determine media type
+function determineMediaType(post: any): 'image' | 'video' | 'carousel' {
+  if (post.carousel_media) return 'carousel';
+  if (post.video_versions) return 'video';
+  return 'image';
+}
+
+// Extract hashtags
+function extractHashtags(text: string): string[] {
+  const hashtagRegex = /#[\w]+/g;
+  const matches = text.match(hashtagRegex);
+  return matches ? matches.map((tag) => tag.toLowerCase()) : [];
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -66,7 +106,44 @@ export async function POST(request: NextRequest) {
       0
     );
 
-    // Store scraped data in Firestore
+    // Transform posts for Supabase (Voice DNA pipeline)
+    const supabasePosts: Omit<StoredPost, 'id'>[] = [];
+    
+    for (const [platformName, result] of Object.entries(results)) {
+      if (result.success && result.posts) {
+        for (const post of result.posts) {
+          supabasePosts.push({
+            userId,
+            platform: platformName as 'instagram' | 'twitter' | 'linkedin',
+            postId: post.pk || post.id || String(post.code),
+            postUrl: post.code ? `https://instagram.com/p/${post.code}` : '',
+            mediaUrls: extractMediaUrls(post),
+            mediaType: determineMediaType(post),
+            caption: post.caption?.text || post.text || '',
+            hashtags: extractHashtags(post.caption?.text || post.text || ''),
+            engagement: {
+              likes: post.like_count || 0,
+              comments: post.comment_count || 0,
+              viewCount: post.view_count,
+            },
+            createdAt: post.taken_at ? post.taken_at * 1000 : Date.now(),
+          });
+        }
+      }
+    }
+
+    // Save to Supabase for Voice DNA pipeline
+    if (supabasePosts.length > 0) {
+      try {
+        await bulkSavePosts(supabasePosts);
+        console.log(`Saved ${supabasePosts.length} posts to Supabase for Voice DNA`);
+      } catch (supabaseError) {
+        console.error('Failed to save to Supabase:', supabaseError);
+        // Continue even if Supabase fails - Firestore is primary
+      }
+    }
+
+    // Store scraped data in Firestore (legacy)
     const firestore = getFirestore();
     const scrapedData: any = {
       userId,
@@ -83,7 +160,6 @@ export async function POST(request: NextRequest) {
         success: result.success,
         totalPosts: result.posts?.length || 0,
         posts: result.posts || [],
-        // Only include error if it exists (not undefined)
         ...(result.error && { error: result.error }),
       };
     }
@@ -112,6 +188,7 @@ export async function POST(request: NextRequest) {
       success: true,
       totalPosts,
       results,
+      savedToSupabase: supabasePosts.length,
       message: `Successfully scraped ${totalPosts} posts from ${platforms.length} platform(s)`,
     });
   } catch (error: any) {

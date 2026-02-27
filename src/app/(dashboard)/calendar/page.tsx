@@ -147,8 +147,19 @@ export default function CalendarPage() {
       );
       
       setAllUpcomingEvents(events);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error loading upcoming events:", error);
+      // If token expired, mark as disconnected
+      if (error.message?.includes('authentication') || error.message?.includes('credentials')) {
+        setIsConnected(false);
+        setToastMessage("Calendar connection expired. Please reconnect.");
+        if (toastTimerRef.current) {
+          window.clearTimeout(toastTimerRef.current);
+        }
+        toastTimerRef.current = window.setTimeout(() => {
+          setToastMessage(null);
+        }, 5000);
+      }
     }
   };
 
@@ -164,8 +175,19 @@ export default function CalendarPage() {
       );
       
       setCalendarEvents(events);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error loading calendar events:", error);
+      // If token expired, mark as disconnected
+      if (error.message?.includes('authentication') || error.message?.includes('credentials')) {
+        setIsConnected(false);
+        setToastMessage("Calendar connection expired. Please reconnect.");
+        if (toastTimerRef.current) {
+          window.clearTimeout(toastTimerRef.current);
+        }
+        toastTimerRef.current = window.setTimeout(() => {
+          setToastMessage(null);
+        }, 5000);
+      }
     }
   };
 
@@ -531,7 +553,11 @@ export default function CalendarPage() {
       </div>
 
       {toastMessage && (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+        <div className={`rounded-xl border px-4 py-3 text-sm ${
+          toastMessage.includes('expired') || toastMessage.includes('Failed')
+            ? 'border-amber-500/30 bg-amber-500/10 text-amber-200'
+            : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+        }`}>
           {toastMessage}
         </div>
       )}

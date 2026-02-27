@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui";
 import { Lock, Eye, EyeOff } from "lucide-react";
 import { auth } from "@/lib/firebase";
@@ -82,7 +83,7 @@ export default function ResetPasswordPage() {
           <p className="text-gray-400 mb-6">
             This password reset link is invalid or has expired.
           </p>
-          <Link href="/forgot-password" size="sm" className="text-purple-400 hover:text-purple-300">
+          <Link href="/forgot-password" className="text-purple-400 hover:text-purple-300">
             Request a new reset link
           </Link>
         </div>

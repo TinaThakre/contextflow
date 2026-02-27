@@ -251,7 +251,7 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between">
                 <CardTitle>Recent Content</CardTitle>
                 <Link
-                  href="/dashboard/history"
+                  href="/history"
                   className="text-sm text-[var(--primary-light)] hover:text-[var(--primary)] transition-colors flex items-center gap-1"
                 >
                   View all
