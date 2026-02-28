@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui";
@@ -9,6 +9,18 @@ import { auth } from "@/lib/firebase";
 import { confirmPasswordReset, verifyPasswordResetCode } from "firebase/auth";
 
 export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
+        <div className="text-white">Loading...</div>
+      </div>
+    }>
+      <ResetPasswordContent />
+    </Suspense>
+  );
+}
+
+function ResetPasswordContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const oobCode = searchParams?.get("oobCode") ?? null; // Firebase uses oobCode
