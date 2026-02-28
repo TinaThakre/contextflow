@@ -1,7 +1,7 @@
 // Authentication Helpers for API Routes
 // Uses Firebase Admin SDK to verify tokens
 
-import { auth } from './firebase-admin';
+import { getAuth } from './firebase-admin';
 
 export interface AuthenticatedRequest {
   userId: string;
@@ -27,7 +27,7 @@ export async function verifyAuth(request: Request): Promise<AuthenticatedRequest
     const token = authHeader.replace('Bearer ', '');
 
     // Verify token with Firebase Admin
-    const decodedToken = await auth.verifyIdToken(token);
+    const decodedToken = await getAuth().verifyIdToken(token);
 
     return {
       userId: decodedToken.uid,
@@ -85,6 +85,7 @@ export async function checkOwnership(
     const auth = await verifyAuth(request);
     return auth.userId === resourceUserId;
   } catch (error) {
+    console.error('Ownership check error:', error);
     return false;
   }
 }

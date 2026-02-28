@@ -11,7 +11,7 @@ import { confirmPasswordReset, verifyPasswordResetCode } from "firebase/auth";
 export default function ResetPasswordPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const oobCode = searchParams.get("oobCode"); // Firebase uses oobCode
+  const oobCode = searchParams?.get("oobCode") ?? null; // Firebase uses oobCode
   
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");

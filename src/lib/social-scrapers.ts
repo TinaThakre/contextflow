@@ -37,6 +37,26 @@ export interface ScrapedPost {
   likes?: number;
   comments?: number;
   shares?: number;
+  // Instagram-specific fields
+  pk?: string | number;
+  code?: string;
+  caption?: {
+    text: string;
+    created_at?: number;
+  };
+  video_versions?: Array<{ url: string }>;
+  image_versions2?: {
+    candidates?: Array<{ url: string }>;
+  };
+  carousel_media?: Array<{
+    image_versions2?: {
+      candidates?: Array<{ url: string }>;
+    };
+  }>;
+  like_count?: number;
+  comment_count?: number;
+  view_count?: number;
+  taken_at?: number;
 }
 
 export interface ScraperResult {

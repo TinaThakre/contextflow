@@ -11,7 +11,6 @@ import {
 } from "@/components/ui";
 import { Button } from "@/components/ui";
 import { ChevronLeft, ChevronRight, CheckCircle2, X, Plus } from "lucide-react";
-import { auth } from "@/lib/firebase";
 import {
   connectGoogleCalendar,
   fetchCalendarEvents,
@@ -133,7 +132,7 @@ export default function CalendarPage() {
     };
 
     checkConnection();
-  }, []);
+    }, []);
 
   // Load all upcoming events (next 3 months) for sidebar
   const loadAllUpcomingEvents = async () => {

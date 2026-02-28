@@ -1,7 +1,6 @@
 "use client";
 
 import { ButtonHTMLAttributes, forwardRef } from "react";
-import { motion, HTMLMotionProps } from "framer-motion";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "primary" | "secondary" | "outline" | "ghost" | "danger";

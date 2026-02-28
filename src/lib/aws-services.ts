@@ -1,32 +1,12 @@
 // AWS Services Integration for Voice DNA
 
 import {
-  RekognitionClient,
-  DetectLabelsCommand,
-  DetectTextCommand,
-  DetectModerationLabelsCommand,
-} from '@aws-sdk/client-rekognition';
-import {
   BedrockRuntimeClient,
   InvokeModelCommand,
 } from '@aws-sdk/client-bedrock-runtime';
-import {
-  S3Client,
-  PutObjectCommand,
-  GetObjectCommand,
-  DeleteObjectCommand,
-} from '@aws-sdk/client-s3';
 import { VisualAnalysis } from '@/types/voice-dna';
 
-// Initialize AWS clients
-const rekognitionClient = new RekognitionClient({
-  region: process.env.AWS_REKOGNITION_REGION || 'us-east-1',
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
-});
-
+// Initialize AWS Bedrock client
 const bedrockClient = new BedrockRuntimeClient({
   region: process.env.AWS_BEDROCK_REGION || 'us-east-1',
   credentials: {
@@ -35,97 +15,46 @@ const bedrockClient = new BedrockRuntimeClient({
   },
 });
 
-const s3Client = new S3Client({
-  region: process.env.AWS_S3_REGION || 'us-east-1',
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
-});
-
 // ==========================================
-// Amazon Rekognition - Image Analysis
+// Amazon Bedrock - Complete Visual Analysis
 // ==========================================
 
-export async function analyzeImageWithRekognition(
-  imageUrl: string
-): Promise<Partial<VisualAnalysis>> {
-  try {
-    // Download image and upload to S3 temporarily
-    const s3Key = await uploadImageToS3(imageUrl);
-
-    // Detect labels (objects, scenes, concepts)
-    const labelsCommand = new DetectLabelsCommand({
-      Image: {
-        S3Object: {
-          Bucket: process.env.AWS_S3_BUCKET_NAME!,
-          Name: s3Key,
-        },
-      },
-      MaxLabels: 20,
-      MinConfidence: 70,
-    });
-
-    const labelsResponse = await rekognitionClient.send(labelsCommand);
-
-    // Detect text in image
-    const textCommand = new DetectTextCommand({
-      Image: {
-        S3Object: {
-          Bucket: process.env.AWS_S3_BUCKET_NAME!,
-          Name: s3Key,
-        },
-      },
-    });
-
-    const textResponse = await rekognitionClient.send(textCommand);
-
-    // Clean up S3
-    await deleteFromS3(s3Key);
-
-    // Extract dominant colors (simplified - Rekognition doesn't provide this directly)
-    const dominantColors = extractColorsFromLabels(labelsResponse.Labels || []);
-
-    return {
-      detectedObjects: labelsResponse.Labels?.map((l) => l.Name || '') || [],
-      sceneType: determineSceneType(labelsResponse.Labels || []),
-      textInImage: textResponse.TextDetections?.map((t) => t.DetectedText || '') || [],
-      dominantColors,
-    };
-  } catch (error) {
-    console.error('Rekognition analysis error:', error);
-    throw new Error('Failed to analyze image with Rekognition');
-  }
-}
-
-// ==========================================
-// Amazon Bedrock - Deep Content Analysis
-// ==========================================
-
-export async function analyzeImageWithBedrock(
-  imageUrl: string,
+export async function analyzeVisualContent(
+  mediaUrl: string,
   caption?: string
-): Promise<Partial<VisualAnalysis>> {
+): Promise<VisualAnalysis> {
   try {
     // Download image as base64
-    const imageBase64 = await downloadImageAsBase64(imageUrl);
+    const imageBase64 = await downloadImageAsBase64(mediaUrl);
 
-    const prompt = `Analyze this image and provide detailed insights:
+    const prompt = `Analyze this image comprehensively and provide detailed insights:
 
-${caption ? `Caption: ${caption}` : ''}
+${caption ? `Caption: "${caption}"` : ''}
 
-Please provide:
-1. Dominant colors (hex codes)
-2. Overall mood/emotion
-3. Composition style (framing, perspective, lighting)
-4. Visual themes
-5. How well the image aligns with the caption (if provided)
+Please provide a complete analysis with:
+1. **Dominant Colors**: List 3-5 dominant colors as hex codes (e.g., ["#FF5733", "#3498DB"])
+2. **Detected Objects**: List all significant objects, people, or items visible (e.g., ["person", "coffee cup", "laptop"])
+3. **Scene Type**: Classify the scene (outdoor, indoor, urban, portrait, food, fitness, nature, etc.)
+4. **Mood**: Overall emotional tone (happy, calm, energetic, professional, inspirational, etc.)
+5. **Composition**: Describe the visual composition (centered, rule-of-thirds, minimalist, busy, bright, dark, etc.)
+6. **Visual Themes**: Key visual themes or aesthetics (modern, vintage, minimalist, colorful, monochrome, etc.)
+7. **Text in Image**: Any visible text, hashtags, or captions in the image
+${caption ? '8. **Caption Alignment**: How well the image aligns with the provided caption' : ''}
 
-Return as JSON with keys: dominantColors, mood, composition, visualThemes, captionAlignment`;
+Return ONLY valid JSON with this exact structure:
+{
+  "dominantColors": ["#hex1", "#hex2"],
+  "detectedObjects": ["object1", "object2"],
+  "sceneType": "scene_type",
+  "mood": "mood_description",
+  "composition": "composition_description",
+  "visualThemes": ["theme1", "theme2"],
+  "textInImage": ["text1", "text2"]
+}`;
 
     const payload = {
       anthropic_version: 'bedrock-2023-05-31',
-      max_tokens: 1000,
+      max_tokens: 1500,
       messages: [
         {
           role: 'user',
@@ -161,37 +90,15 @@ Return as JSON with keys: dominantColors, mood, composition, visualThemes, capti
     const content = responseBody.content[0].text;
     const analysis = parseBedrockResponse(content);
 
-    return analysis;
-  } catch (error) {
-    console.error('Bedrock analysis error:', error);
-    throw new Error('Failed to analyze image with Bedrock');
-  }
-}
-
-// ==========================================
-// Combined Visual Analysis
-// ==========================================
-
-export async function analyzeVisualContent(
-  mediaUrl: string,
-  caption?: string
-): Promise<VisualAnalysis> {
-  try {
-    // Run both analyses in parallel
-    const [rekognitionAnalysis, bedrockAnalysis] = await Promise.all([
-      analyzeImageWithRekognition(mediaUrl),
-      analyzeImageWithBedrock(mediaUrl, caption),
-    ]);
-
-    // Combine results
+    // Ensure all required fields are present
     return {
-      dominantColors: bedrockAnalysis.dominantColors || [],
-      detectedObjects: rekognitionAnalysis.detectedObjects || [],
-      sceneType: rekognitionAnalysis.sceneType || 'unknown',
-      mood: bedrockAnalysis.mood || 'neutral',
-      composition: bedrockAnalysis.composition || 'standard',
-      visualThemes: bedrockAnalysis.visualThemes || [],
-      textInImage: rekognitionAnalysis.textInImage,
+      dominantColors: analysis.dominantColors || [],
+      detectedObjects: analysis.detectedObjects || [],
+      sceneType: analysis.sceneType || 'general',
+      mood: analysis.mood || 'neutral',
+      composition: analysis.composition || 'standard',
+      visualThemes: analysis.visualThemes || [],
+      textInImage: analysis.textInImage || [],
     };
   } catch (error) {
     console.error('Visual analysis error:', error);
@@ -363,44 +270,8 @@ Return as JSON.`;
 }
 
 // ==========================================
-// S3 Helper Functions
+// Helper Functions
 // ==========================================
-
-async function uploadImageToS3(imageUrl: string): Promise<string> {
-  try {
-    const response = await fetch(imageUrl);
-    const buffer = await response.arrayBuffer();
-    
-    const key = `temp/${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
-    
-    const command = new PutObjectCommand({
-      Bucket: process.env.AWS_S3_BUCKET_NAME!,
-      Key: key,
-      Body: Buffer.from(buffer),
-      ContentType: 'image/jpeg',
-    });
-
-    await s3Client.send(command);
-    return key;
-  } catch (error) {
-    console.error('S3 upload error:', error);
-    throw new Error('Failed to upload image to S3');
-  }
-}
-
-async function deleteFromS3(key: string): Promise<void> {
-  try {
-    const command = new DeleteObjectCommand({
-      Bucket: process.env.AWS_S3_BUCKET_NAME!,
-      Key: key,
-    });
-
-    await s3Client.send(command);
-  } catch (error) {
-    console.error('S3 delete error:', error);
-    // Don't throw - cleanup failure shouldn't break the flow
-  }
-}
 
 async function downloadImageAsBase64(imageUrl: string): Promise<string> {
   try {
@@ -413,61 +284,6 @@ async function downloadImageAsBase64(imageUrl: string): Promise<string> {
   }
 }
 
-// ==========================================
-// Helper Functions
-// ==========================================
-
-function extractColorsFromLabels(labels: any[]): string[] {
-  // Simplified color extraction based on labels
-  const colorKeywords: { [key: string]: string } = {
-    'Red': '#FF0000',
-    'Blue': '#0000FF',
-    'Green': '#00FF00',
-    'Yellow': '#FFFF00',
-    'Orange': '#FFA500',
-    'Purple': '#800080',
-    'Pink': '#FFC0CB',
-    'Brown': '#A52A2A',
-    'Black': '#000000',
-    'White': '#FFFFFF',
-    'Gray': '#808080',
-  };
-
-  const colors: string[] = [];
-  
-  for (const label of labels) {
-    const name = label.Name || '';
-    for (const [keyword, hex] of Object.entries(colorKeywords)) {
-      if (name.includes(keyword) && !colors.includes(hex)) {
-        colors.push(hex);
-      }
-    }
-  }
-
-  return colors.length > 0 ? colors : ['#808080']; // Default to gray
-}
-
-function determineSceneType(labels: any[]): string {
-  const sceneKeywords: { [key: string]: string[] } = {
-    'outdoor': ['Outdoors', 'Nature', 'Sky', 'Mountain', 'Beach', 'Forest'],
-    'indoor': ['Indoors', 'Room', 'Furniture', 'Interior'],
-    'urban': ['City', 'Building', 'Street', 'Urban'],
-    'portrait': ['Person', 'Face', 'Portrait', 'Selfie'],
-    'food': ['Food', 'Meal', 'Dish', 'Restaurant'],
-    'fitness': ['Gym', 'Exercise', 'Fitness', 'Workout', 'Sport'],
-  };
-
-  const labelNames = labels.map((l) => l.Name || '');
-
-  for (const [scene, keywords] of Object.entries(sceneKeywords)) {
-    if (keywords.some((keyword) => labelNames.includes(keyword))) {
-      return scene;
-    }
-  }
-
-  return 'general';
-}
-
 function parseBedrockResponse(content: string): Partial<VisualAnalysis> {
   try {
     // Try to extract JSON from the response
@@ -476,20 +292,26 @@ function parseBedrockResponse(content: string): Partial<VisualAnalysis> {
       return JSON.parse(jsonMatch[0]);
     }
     
-    // Fallback: parse manually
+    // Fallback: return defaults
     return {
       dominantColors: [],
+      detectedObjects: [],
+      sceneType: 'general',
       mood: 'neutral',
       composition: 'standard',
       visualThemes: [],
+      textInImage: [],
     };
   } catch (error) {
     console.error('Failed to parse Bedrock response:', error);
     return {
       dominantColors: [],
+      detectedObjects: [],
+      sceneType: 'general',
       mood: 'neutral',
       composition: 'standard',
       visualThemes: [],
+      textInImage: [],
     };
   }
 }

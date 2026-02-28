@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
           supabasePosts.push({
             userId,
             platform: platformName as 'instagram' | 'twitter' | 'linkedin',
-            postId: post.pk || post.id || String(post.code),
+            postId: String(post.id || post.code),
             postUrl: post.code ? `https://instagram.com/p/${post.code}` : '',
             mediaUrls: extractMediaUrls(post),
             mediaType: determineMediaType(post),

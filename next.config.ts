@@ -1,13 +1,11 @@
 const nextConfig = {
-  // Disable static optimization for pages that use Firebase
-  experimental: {
-    // This helps with Firebase and other client-side libraries
-    optimizePackageImports: ['firebase', '@firebase/auth', '@firebase/firestore'],
-  },
-  // Don't try to statically generate auth-protected pages
   typescript: {
     ignoreBuildErrors: false,
   },
+  // Use server-side rendering for all pages to avoid static generation issues
+  output: 'standalone',
+  // Disable static optimization
+  trailingSlash: true,
 }
 
-export default nextConfig
+export default nextConfig;
