@@ -77,7 +77,7 @@ Return ONLY valid JSON with this exact structure:
     };
 
     const command = new InvokeModelCommand({
-      modelId: process.env.AWS_BEDROCK_MODEL_ID || 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+      modelId: process.env.AWS_BEDROCK_MODEL_ID || 'us.anthropic.claude-3-5-sonnet-20241022-v2:0',
       contentType: 'application/json',
       accept: 'application/json',
       body: JSON.stringify(payload),
@@ -142,7 +142,7 @@ Return as JSON.`;
     };
 
     const command = new InvokeModelCommand({
-      modelId: process.env.AWS_BEDROCK_MODEL_ID || 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+      modelId: process.env.AWS_BEDROCK_MODEL_ID || 'us.anthropic.claude-3-5-sonnet-20241022-v2:0',
       contentType: 'application/json',
       accept: 'application/json',
       body: JSON.stringify(payload),
@@ -201,7 +201,7 @@ Return as structured JSON matching the VoiceDNA interface.`;
     };
 
     const command = new InvokeModelCommand({
-      modelId: process.env.AWS_BEDROCK_MODEL_ID || 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+      modelId: process.env.AWS_BEDROCK_MODEL_ID || 'us.anthropic.claude-3-5-sonnet-20241022-v2:0',
       contentType: 'application/json',
       accept: 'application/json',
       body: JSON.stringify(payload),
@@ -253,7 +253,7 @@ Return as JSON.`;
     };
 
     const command = new InvokeModelCommand({
-      modelId: process.env.AWS_BEDROCK_MODEL_ID || 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+      modelId: process.env.AWS_BEDROCK_MODEL_ID || 'us.anthropic.claude-3-5-sonnet-20241022-v2:0',
       contentType: 'application/json',
       accept: 'application/json',
       body: JSON.stringify(payload),
