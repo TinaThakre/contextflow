@@ -333,11 +333,22 @@ export default function VoiceDnaPage() {
                     className="rounded-xl border border-white/10 bg-[var(--background-tertiary)] p-4 space-y-3 hover:border-white/20 transition-colors"
                   >
                     <div className="flex items-center justify-between">
-                      <span
-                        className={`text-xs rounded-full border px-2 py-0.5 ${platformBadgeStyles[displayPlatform]}`}
-                      >
-                        {displayPlatform}
-                      </span>
+                      {post.postUrl ? (
+                        <a
+                          href={post.postUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`text-xs rounded-full border px-2 py-0.5 hover:opacity-80 transition-opacity ${platformBadgeStyles[displayPlatform]}`}
+                        >
+                          {displayPlatform} ↗
+                        </a>
+                      ) : (
+                        <span
+                          className={`text-xs rounded-full border px-2 py-0.5 ${platformBadgeStyles[displayPlatform]}`}
+                        >
+                          {displayPlatform}
+                        </span>
+                      )}
                       <span className="text-xs text-[var(--foreground-muted)]">
                         {post.mediaType === 'image' ? 'Image' : post.mediaType === 'video' ? 'Video' : 'Post'}
                       </span>

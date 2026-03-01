@@ -37,6 +37,8 @@ export interface ScrapedPost {
   likes?: number;
   comments?: number;
   shares?: number;
+  /** Canonical post URL constructed from the shortcode */
+  post_url?: string;
   // Instagram-specific fields
   pk?: string | number;
   code?: string;
@@ -104,12 +106,15 @@ export async function scrapeInstagram(username: string, limit: number = 50): Pro
     const edges = data.result?.edges || data.data?.edges || data.edges || [];
     const posts: ScrapedPost[] = edges.slice(0, limit).map((edge: any) => {
       const node = edge.node || edge;
+      const code: string = node.code || '';
       return {
-        id: node.id || node.pk || node.code || String(Math.random()),
+        id: node.id || node.pk || code || String(Math.random()),
+        code,
+        post_url: code ? `https://www.instagram.com/p/${code}/` : '',
         text: node.caption?.text || node.caption || node.text || '',
-        timestamp: node.caption?.created_at 
-          ? new Date(node.caption.created_at * 1000).toISOString() 
-          : node.taken_at 
+        timestamp: node.caption?.created_at
+          ? new Date(node.caption.created_at * 1000).toISOString()
+          : node.taken_at
           ? new Date(node.taken_at * 1000).toISOString()
           : new Date().toISOString(),
         likes: node.like_count || node.likes || 0,

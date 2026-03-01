@@ -13,6 +13,8 @@
 export interface ParsedInstagramPost {
   id: string;
   code: string;
+  /** Canonical post URL, e.g. https://www.instagram.com/p/{code}/ */
+  postUrl: string;
   caption: string;
   hashtags: string[];
   timestamp: number;
@@ -52,9 +54,11 @@ export function parseInstagramData(rawData: unknown): ParsedInstagramPost[] {
     const mediaUrl = resolveMediaUrl(node, mediaType);
 
     // Accept posts even without media — captions still carry voice signal
+    const code: string = node.code ?? '';
     const post: ParsedInstagramPost = {
       id: String(node.pk ?? node.id ?? ''),
-      code: node.code ?? '',
+      code,
+      postUrl: code ? `https://www.instagram.com/p/${code}/` : '',
       caption: node.caption?.text ?? '',
       hashtags: extractHashtags(node.caption?.text ?? ''),
       timestamp: node.taken_at ?? 0,

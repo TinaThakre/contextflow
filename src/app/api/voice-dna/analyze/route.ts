@@ -160,9 +160,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<AnalyzeRe
           const timestamp: number = p.timestamp
             ? Math.floor(new Date(p.timestamp).getTime() / 1000)
             : 0;
+          const code: string = p.code || '';
+          const postUrl: string = p.post_url || (code ? `https://www.instagram.com/p/${code}/` : '');
           return {
             id: String(p.id),
-            code: p.code || '',
+            code,
+            postUrl,
             caption: captionText,
             hashtags,
             timestamp,
@@ -180,7 +183,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<AnalyzeRe
           userId,
           platform: platformName as 'instagram' | 'twitter' | 'linkedin',
           postId: p.id,
-          postUrl: p.code ? `https://instagram.com/p/${p.code}` : '',
+          postUrl: p.postUrl || '',  // canonical URL already built during normalization
           mediaUrls: [p.mediaUrl, ...(p.carouselMedia?.map((c) => c.url) ?? [])].filter(Boolean),
           mediaType: p.mediaType,
           caption: p.caption,
