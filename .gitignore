@@ -44,3 +44,7 @@ md/
 # instagram_data.json
 # instagram_data_copy.json
 *.md*
+
+# Local test data files
+parsed_instagram_data.json
+vedika_insta.json

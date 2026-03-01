@@ -9,10 +9,17 @@ import {
   LearningMetrics,
 } from '@/types/voice-dna';
 
+// Strip sslmode from the connection string — we configure SSL explicitly below
+// so the pg driver's sslmode parser doesn't fight with our rejectUnauthorized setting.
+const rawUrl = process.env.DATABASE_URL ?? '';
+const sanitizedUrl = rawUrl.replace(/[?&]sslmode=[^&]*/gi, '');
+
 // Initialize PostgreSQL pool
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  connectionString: sanitizedUrl,
+  ssl: {
+    rejectUnauthorized: false,   // accept AWS RDS self-signed certificate chain
+  },
 });
 
 // Export pool for direct queries
@@ -93,43 +100,70 @@ export async function updatePostAnalysis(
   }
 }
 
+/**
+ * Idempotent bulk-insert: ON CONFLICT (user_id, platform, post_id) DO NOTHING.
+ * Safe to call repeatedly with the same data from retried scrapes.
+ */
 export async function bulkSavePosts(posts: Omit<StoredPost, 'id'>[]): Promise<void> {
+  if (posts.length === 0) return;
+
+  const client = await pool.connect();
   try {
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      
-      for (const post of posts) {
-        await client.query(
-          `INSERT INTO user_posts (user_id, platform, post_id, post_url, media_urls, media_type, caption, hashtags, visual_analysis, engagement, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-          [
-            post.userId,
-            post.platform,
-            post.postId,
-            post.postUrl,
-            JSON.stringify(post.mediaUrls),
-            post.mediaType,
-            post.caption,
-            JSON.stringify(post.hashtags),
-            JSON.stringify(post.visualAnalysis),
-            JSON.stringify(post.engagement),
-            new Date(post.createdAt).toISOString(),
-          ]
-        );
-      }
-      
-      await client.query('COMMIT');
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
+    await client.query('BEGIN');
+
+    for (const post of posts) {
+      await client.query(
+        `INSERT INTO user_posts (user_id, platform, post_id, post_url, media_urls, media_type, caption, hashtags, visual_analysis, engagement, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         ON CONFLICT (user_id, platform, post_id) DO NOTHING`,
+        [
+          post.userId,
+          post.platform,
+          post.postId,
+          post.postUrl,
+          JSON.stringify(post.mediaUrls),
+          post.mediaType,
+          post.caption,
+          JSON.stringify(post.hashtags),
+          JSON.stringify(post.visualAnalysis),
+          JSON.stringify(post.engagement),
+          new Date(post.createdAt).toISOString(),
+        ],
+      );
     }
+
+    await client.query('COMMIT');
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Error bulk saving posts:', error);
     throw new Error('Failed to bulk save posts');
+  } finally {
+    client.release();
   }
+}
+
+// ==========================================
+// Raw Scrape Audit Log
+// ==========================================
+
+/**
+ * Save the raw RapidAPI response for audit/debug.
+ * This is append-only — every scrape creates a new row.
+ */
+export async function saveRawScrape(
+  userId: string,
+  platform: string,
+  username: string,
+  rawResponse: unknown,
+  postCount: number,
+): Promise<string> {
+  const result = await pool.query(
+    `INSERT INTO raw_scrapes (user_id, platform, username, raw_response, post_count, created_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())
+     RETURNING id`,
+    [userId, platform, username, JSON.stringify(rawResponse), postCount],
+  );
+  return result.rows[0].id;
 }
 
 // ==========================================

@@ -60,6 +60,8 @@ export default function VoiceDnaPage() {
   const [isConfirming, setIsConfirming] = useState(false);
   const [scrapedPosts, setScrapedPosts] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [voiceDNAStatus, setVoiceDNAStatus] = useState<'idle' | 'scraping' | 'generating' | 'complete' | 'error'>('idle');
+  const [generatedPlatforms, setGeneratedPlatforms] = useState<string[]>([]);
 
   const intervalRef = useRef<number | null>(null);
   const confirmTimerRef = useRef<number | null>(null);
@@ -87,6 +89,8 @@ export default function VoiceDnaPage() {
     setProgress(0);
     setError(null);
     setScrapedPosts([]);
+    setVoiceDNAStatus('scraping');
+    setGeneratedPlatforms([]);
 
     try {
       // Get Firebase auth token
@@ -115,11 +119,11 @@ export default function VoiceDnaPage() {
       }
 
       intervalRef.current = window.setInterval(() => {
-        setProgress((prev) => Math.min(prev + 2, 90));
+        setProgress((prev) => Math.min(prev + 1.5, 85));
       }, 100);
 
-      // Call scrape API
-      const response = await fetch("/api/social/scrape", {
+      // Call unified analyze API (combines scraping + Voice DNA generation)
+      const response = await fetch("/api/voice-dna/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -133,30 +137,21 @@ export default function VoiceDnaPage() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to scrape social media");
+        throw new Error(errorData.error || "Failed to analyze social media");
       }
 
       const data = await response.json();
       
-      console.log('API Response:', data);
-      console.log('Results:', data.results);
+      console.log('Analysis Response:', data);
+      console.log('Scraped Results:', data.data?.scraped);
+      console.log('Voice DNA Results:', data.data?.voiceDNA);
       
-      // Collect all posts from all platforms
-      const allPosts: any[] = [];
-      Object.entries(data.results || {}).forEach(([platform, result]: [string, any]) => {
-        console.log(`Processing platform: ${platform}`, result);
-        if (result.success && result.posts) {
-          result.posts.forEach((post: any) => {
-            allPosts.push({
-              ...post,
-              platform: platform,
-            });
-          });
-        }
-      });
+      // Get generated platforms
+      const generatedList: string[] = Object.entries(data.data?.voiceDNA || {})
+        .filter(([_, result]: [string, any]) => result.id)
+        .map(([platform]) => platform);
 
-      console.log('All scraped posts:', allPosts);
-      setScrapedPosts(allPosts);
+      setGeneratedPlatforms(generatedList);
       setProgress(100);
       
       if (intervalRef.current) {
@@ -165,11 +160,13 @@ export default function VoiceDnaPage() {
 
       setIsAnalyzing(false);
       setIsAnalyzed(true);
+      setVoiceDNAStatus('complete');
     } catch (err: any) {
       console.error("Analysis error:", err);
       setError(err.message || "Failed to analyze posts");
       setIsAnalyzing(false);
       setProgress(0);
+      setVoiceDNAStatus('error');
       
       if (intervalRef.current) {
         window.clearInterval(intervalRef.current);
@@ -194,17 +191,31 @@ export default function VoiceDnaPage() {
   };
 
   const progressMessage = useMemo(() => {
-    if (!isAnalyzing) {
-      return "Analysis complete.";
+    if (voiceDNAStatus === 'complete') {
+      return "Analysis complete! Voice DNA created.";
     }
-    if (progress < 35) {
-      return progressMessages[0];
+    if (voiceDNAStatus === 'error') {
+      return "Error during analysis. Please try again.";
     }
-    if (progress < 70) {
-      return progressMessages[1];
+    if (!isAnalyzing && voiceDNAStatus === 'idle') {
+      return "Ready to analyze.";
     }
-    return progressMessages[2];
-  }, [isAnalyzing, progress]);
+    
+    // Progress-based messages for scraping and generation
+    if (progress < 20) {
+      return "Scraping social media posts...";
+    }
+    if (progress < 40) {
+      return "Parsing and normalizing posts...";
+    }
+    if (progress < 60) {
+      return "Extracting text patterns...";
+    }
+    if (progress < 80) {
+      return "Generating Voice DNA profile...";
+    }
+    return "Finalizing analysis...";
+  }, [isAnalyzing, progress, voiceDNAStatus]);
 
   return (
     <div className="space-y-10">
@@ -369,12 +380,28 @@ export default function VoiceDnaPage() {
           </div>
 
           <div className="flex flex-col items-center gap-3">
-            <Button size="lg" isLoading={isConfirming} onClick={handleConfirm}>
-              Confirm and Build My DNA
-            </Button>
-            <p className="text-xs text-[var(--foreground-muted)]">
-              This will take you back to your dashboard once the setup is done.
-            </p>
+            {voiceDNAStatus === 'complete' && generatedPlatforms.length > 0 ? (
+              <>
+                <div className="text-center space-y-2 mb-4">
+                  <h3 className="text-lg font-semibold text-green-400">✓ Voice DNA Created!</h3>
+                  <p className="text-sm text-[var(--foreground-muted)]">
+                    Successfully created Voice DNA for: {generatedPlatforms.join(', ')}
+                  </p>
+                </div>
+                <Button size="lg" isLoading={isConfirming} onClick={handleConfirm}>
+                  Go to Dashboard
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button size="lg" isLoading={isConfirming} onClick={handleConfirm}>
+                  Confirm and Build My DNA
+                </Button>
+                <p className="text-xs text-[var(--foreground-muted)]">
+                  This will take you back to your dashboard once the setup is done.
+                </p>
+              </>
+            )}
           </div>
         </div>
       )}

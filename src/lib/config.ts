@@ -44,6 +44,14 @@ export const config = {
     s3Bucket: process.env.AWS_S3_BUCKET_NAME || "",
   },
 
+  // AWS Bedrock
+  bedrock: {
+    region: process.env.AWS_BEDROCK_REGION || "us-east-1",
+    modelId:
+      process.env.AWS_BEDROCK_MODEL_ID ||
+      "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+  },
+
   // Google Cloud (Vertex AI)
   googleCloud: {
     projectId: process.env.GOOGLE_CLOUD_PROJECT || "",

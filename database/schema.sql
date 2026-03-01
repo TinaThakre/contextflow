@@ -107,6 +107,21 @@ CREATE TABLE IF NOT EXISTS learning_metrics (
 CREATE INDEX idx_learning_metrics_user ON learning_metrics(user_id, platform);
 
 -- ==========================================
+-- Raw Scrapes Table (audit / debug)
+-- ==========================================
+CREATE TABLE IF NOT EXISTS raw_scrapes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id VARCHAR(255) NOT NULL,
+  platform VARCHAR(50) NOT NULL,
+  username VARCHAR(255) NOT NULL,
+  raw_response JSONB NOT NULL,
+  post_count INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_raw_scrapes_user ON raw_scrapes(user_id, platform, created_at DESC);
+
+-- ==========================================
 -- Comments for Documentation
 -- ==========================================
 COMMENT ON TABLE user_posts IS 'Stores scraped social media posts with visual analysis';
@@ -114,3 +129,4 @@ COMMENT ON TABLE voice_dna IS 'Stores the current Voice DNA profile for each use
 COMMENT ON TABLE voice_dna_history IS 'Tracks historical changes to Voice DNA over time';
 COMMENT ON TABLE generated_content_feedback IS 'Stores user feedback on AI-generated content';
 COMMENT ON TABLE learning_metrics IS 'Tracks learning and improvement metrics per user';
+COMMENT ON TABLE raw_scrapes IS 'Stores raw API responses from social media scrapers for audit/debug';
