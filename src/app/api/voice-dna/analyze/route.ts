@@ -16,7 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuth } from '@/lib/firebase-admin';
 import { scrapeMultiplePlatforms } from '@/lib/social-scrapers';
-import { parseInstagramData, type ParsedInstagramPost } from '@/lib/instagram-parser';
+import type { ParsedInstagramPost } from '@/lib/instagram-parser';
 import { createVoiceDNA } from '@/lib/voice-dna-service';
 import { bulkSavePosts, saveRawScrape } from '@/lib/database';
 import type { StoredPost } from '@/types/voice-dna';
@@ -43,6 +43,7 @@ interface AnalyzeResponse {
       confidence: number;
       version: string;
     }>;
+    scrapedPosts: ParsedInstagramPost[];
   };
   error?: string;
 }
@@ -140,13 +141,37 @@ export async function POST(request: NextRequest): Promise<NextResponse<AnalyzeRe
         console.error(`[analyze] Failed to save raw response for ${platformName}:`, rawErr);
       }
 
-      // Parse posts
-      const syntheticRaw = {
-        result: {
-          edges: rawResult.posts.map((p: any) => ({ node: p })),
-        },
-      };
-      const parsed = parseInstagramData(syntheticRaw);
+      // Convert already-normalized ScrapedPost objects → ParsedInstagramPost.
+      // NOTE: scrapeInstagram() has already extracted caption into `text`,
+      // like_count into `likes`, comment_count into `comments`, and
+      // taken_at into a ISO-string `timestamp`. Running parseInstagramData()
+      // again would see undefined for all those raw fields and return empty
+      // captions/zero counts. We map directly instead.
+      const parsed: ParsedInstagramPost[] = rawResult.posts
+        .filter((p: any) => p.id)
+        .map((p: any) => {
+          const captionText: string = p.text || '';
+          // Re-extract hashtags using the same pattern as the parser
+          const hashtagMatches = captionText.match(/#[\w\u0900-\u097F]+/g);
+          const hashtags: string[] = hashtagMatches
+            ? hashtagMatches.map((t: string) => t.toLowerCase())
+            : [];
+          // Convert ISO timestamp string → unix seconds
+          const timestamp: number = p.timestamp
+            ? Math.floor(new Date(p.timestamp).getTime() / 1000)
+            : 0;
+          return {
+            id: String(p.id),
+            code: p.code || '',
+            caption: captionText,
+            hashtags,
+            timestamp,
+            mediaType: (p.mediaType || 'image') as 'image' | 'video' | 'carousel',
+            mediaUrl: p.mediaUrl || '',
+            likeCount: p.likes ?? 0,
+            commentCount: p.comments ?? 0,
+          } satisfies ParsedInstagramPost;
+        });
       allParsedPosts[platformName] = parsed;
 
       // Persist to database
@@ -230,12 +255,20 @@ export async function POST(request: NextRequest): Promise<NextResponse<AnalyzeRe
     // ── Return success ───────────────────────────────────────────
     console.log('[analyze] Pipeline complete');
 
+    // Flatten all parsed posts from all platforms into a single array,
+    // tagging each with its platform so the UI can render the correct badge.
+    const allScrapedPosts = Object.entries(allParsedPosts).flatMap(
+      ([platformName, posts]) =>
+        posts.map((post) => ({ ...post, platform: platformName })),
+    );
+
     return NextResponse.json({
       success: true,
       message: 'Voice DNA analysis complete',
       data: {
         scraped: scrapeResults,
         voiceDNA: voiceDNAResults,
+        scrapedPosts: allScrapedPosts,
       },
     });
   } catch (error: any) {

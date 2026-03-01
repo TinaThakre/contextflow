@@ -145,6 +145,12 @@ export default function VoiceDnaPage() {
       console.log('Analysis Response:', data);
       console.log('Scraped Results:', data.data?.scraped);
       console.log('Voice DNA Results:', data.data?.voiceDNA);
+      console.log('Scraped Posts:', data.data?.scrapedPosts);
+      
+      // Populate scrapedPosts from API response
+      const posts = data.data?.scrapedPosts || [];
+      setScrapedPosts(posts);
+      console.log(`Populated scrapedPosts with ${posts.length} posts`);
       
       // Get generated platforms
       const generatedList: string[] = Object.entries(data.data?.voiceDNA || {})
@@ -319,7 +325,7 @@ export default function VoiceDnaPage() {
                   twitter: 'X',
                   linkedin: 'LinkedIn',
                 };
-                const displayPlatform = platformMap[post.platform] || 'IG';
+                const displayPlatform = platformMap[post.platform as string] || 'IG';
                 
                 return (
                   <div
@@ -333,17 +339,17 @@ export default function VoiceDnaPage() {
                         {displayPlatform}
                       </span>
                       <span className="text-xs text-[var(--foreground-muted)]">
-                        Text
+                        {post.mediaType === 'image' ? 'Image' : post.mediaType === 'video' ? 'Video' : 'Post'}
                       </span>
                     </div>
                     <div className="space-y-2 min-h-[60px]">
                       <p className="text-xs text-[var(--foreground-muted)] line-clamp-3">
-                        {post.text || 'No text content'}
+                        {post.caption || 'No caption'}
                       </p>
                     </div>
                     <div className="flex items-center justify-between text-xs text-[var(--foreground-muted)]">
-                      <span>❤️ {post.likes || 0}</span>
-                      <span>💬 {post.comments || 0}</span>
+                      <span>❤️ {post.likeCount || 0}</span>
+                      <span>💬 {post.commentCount || 0}</span>
                     </div>
                   </div>
                 );
