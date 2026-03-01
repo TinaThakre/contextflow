@@ -191,9 +191,11 @@ export default function VoiceDnaPage() {
       window.clearTimeout(confirmTimerRef.current);
     }
 
+    // Navigate to the Voice DNA profile page for the first generated platform
+    const targetPlatform = generatedPlatforms[0] || 'instagram';
     confirmTimerRef.current = window.setTimeout(() => {
-      router.push("/dashboard");
-    }, 900);
+      router.push(`/voice-dna/${targetPlatform}`);
+    }, 300);
   };
 
   const progressMessage = useMemo(() => {
@@ -406,8 +408,14 @@ export default function VoiceDnaPage() {
                   </p>
                 </div>
                 <Button size="lg" isLoading={isConfirming} onClick={handleConfirm}>
-                  Go to Dashboard
+                  See Your Voice DNA
                 </Button>
+                <button
+                  className="text-xs text-[var(--foreground-muted)] hover:text-white transition-colors mt-1"
+                  onClick={() => router.push('/dashboard')}
+                >
+                  Go to Dashboard instead
+                </button>
               </>
             ) : (
               <>

@@ -16,9 +16,11 @@ import type { ParsedInstagramPost } from '@/lib/instagram-parser';
 function storedToParseShape(post: StoredPost): ParsedInstagramPost {
   // postUrl: "https://instagram.com/p/CODE" → extract code
   const codeMatch = post.postUrl.match(/\/p\/([^/?]+)/);
+  const code = codeMatch?.[1] ?? '';
   return {
     id: post.postId,
-    code: codeMatch?.[1] ?? '',
+    code,
+    postUrl: post.postUrl || (code ? `https://www.instagram.com/p/${code}/` : ''),
     caption: post.caption ?? '',
     hashtags: post.hashtags ?? [],
     timestamp: typeof post.createdAt === 'number'
